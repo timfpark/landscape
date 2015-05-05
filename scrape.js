@@ -15,67 +15,37 @@ var topLeftTile = Tile.tileFromTileId(currentTileId);
 
 var startTime = new Date();
 var totalTiles = 0;
+var finishedTiles = 0;
 
 async.forever(
 	function(next) {
 		var tileIds = Tile.tileIdsForAllZoomLevels(currentTileId);
 
-		async.eachSeries(tileIds, function(tileId, callback) {
-			fetchTileId(tileId, callback);
-		}, function(err) {
-
-			var tile = Tile.decodeTileId(currentTileId);
-
-			currentTileId = Tile.tileIdFromRowColumn(tile.row, tile.column+1, 18);
-
-			var tile = Tile.tileFromTileId(currentTileId);
-			console.log('fetching tile at ' + tile.latitudeNorth + ',' + tile.longitudeWest, ': ' + currentTileId);
-
-			if (tile.longitudeWest > fetchBbox.east) {
-
-				tile.row++;
-				tile.column = topLeftTile.column;
-
-				currentTileId = Tile.tileIdFromRowColumn(tile.row, tile.column, 18);
-				tile = Tile.tileFromTileId(currentTileId);
-			}
-
-			if (tile.latitudeNorth < fetchBbox.south) {
-				console.log('finished');
-				process.exit(0);
-			}
-
-			return next();
+		tileIds.forEach(function(tileId) {
+			totalTiles += fetchTileId(tileId);
 		});
-	},
 
-	function(err) { }
-);
+		var tile = Tile.decodeTileId(currentTileId);
 
-function fetchTileId(tileId, callback) {
-	var tile = Tile.tileFromTileId(tileId);
+		currentTileId = Tile.tileIdFromRowColumn(tile.row, tile.column+1, 18);
 
-	if (!fs.existsSync('tiles')) 									fs.mkdirSync('tiles');
-	if (!fs.existsSync('tiles/' + tile.zoom)) 						fs.mkdirSync('tiles/' + tile.zoom);
-	if (!fs.existsSync('tiles/' + tile.zoom + '/' + tile.column)) 	fs.mkdirSync('tiles/' + tile.zoom + '/' + tile.column);
+		var tile = Tile.tileFromTileId(currentTileId);
+		console.log('fetching tile at ' + tile.latitudeNorth + ',' + tile.longitudeWest, ': ' + currentTileId);
 
-	var path = tile.zoom + '/' + tile.column + '/' + tile.row + '.png';
-	var filePath = 'tiles/' + path;
-	if (fs.existsSync(filePath))
-		return callback();
+		if (tile.longitudeWest > fetchBbox.east) {
+			tile.row++;
+			tile.column = topLeftTile.column;
 
-	var tileUrl = 'http://a.tile.thunderforest.com/landscape/' + path;
+			currentTileId = Tile.tileIdFromRowColumn(tile.row, tile.column, 18);
+			tile = Tile.tileFromTileId(currentTileId);
+		}
 
-	console.log(new Date() + ' fetching ' + path);
+		if (tile.latitudeNorth < fetchBbox.south) {
+			console.log('finished');
+			process.exit(0);
+		}
 
-	request({
-		url: tileUrl,
-		encoding: null,
-		method: 'GET'
-	}, function(err, response, image) {
-		if (err) return callback(err);
-
-		totalTiles++;
+		console.log('totalTiles: ' + totalTiles + ' finishedTiles: ' + finishedTiles);
 
 		var currentTime = new Date();
 		var delta = currentTime.getTime() - startTime.getTime();
@@ -86,7 +56,39 @@ function fetchTileId(tileId, callback) {
 			console.log('waiting ' + waitTime);
 
 		setTimeout(function() {
-			fs.writeFile(filePath, image, 'binary', callback);
+			return next();
 		}, waitTime);
+	},
+
+	function(err) { }
+);
+
+function fetchTileId(tileId, callback) {
+	var tile = Tile.decodeTileId(tileId);
+
+	if (!fs.existsSync('tiles')) 									fs.mkdirSync('tiles');
+	if (!fs.existsSync('tiles/' + tile.zoom)) 						fs.mkdirSync('tiles/' + tile.zoom);
+	if (!fs.existsSync('tiles/' + tile.zoom + '/' + tile.column)) 	fs.mkdirSync('tiles/' + tile.zoom + '/' + tile.column);
+
+	var path = tile.zoom + '/' + tile.column + '/' + tile.row + '.png';
+	var filePath = 'tiles/' + path;
+	if (fs.existsSync(filePath))
+		return 0;
+
+	var tileUrl = 'http://a.tile.thunderforest.com/landscape/' + path;
+
+	console.log(' fetching ' + path);
+
+	request({
+		url: tileUrl,
+		encoding: null,
+		method: 'GET'
+	}, function(err, response, image) {
+		if (err) return callback(err);
+
+		fs.writeFileSync(filePath, image, 'binary');
+		finishedTiles++;
 	});
+
+	return 1;
 }
