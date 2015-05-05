@@ -10,33 +10,37 @@ var fetchBbox = {
 	west: -122
 };
 
-var latitude = fetchBbox.north;
-var longitude = fetchBbox.west;
-
-var latitudePerTile = 180.0 / Math.pow(2, 18);
-var longitudePerTile = 360.0 / Math.pow(2, 18);
+var currentTileId = Tile.tileIdFromLatLong(fetchBbox.north, fetchBbox.west, 18);
+var topLeftTile = Tile.tileFromTileId(currentTileId);
 
 var startTime = new Date();
 var totalTiles = 0;
 
 async.forever(
 	function(next) {
-
-		console.log('fetching tile at ' + latitude + ',' + longitude);
-
-		var tileId18 = Tile.tileIdFromLatLong(latitude, longitude, 18);
-		var tileIds = Tile.tileIdsForAllZoomLevels(tileId18);
+		var tileIds = Tile.tileIdsForAllZoomLevels(currentTileId);
 
 		async.eachSeries(tileIds, function(tileId, callback) {
 			fetchTileId(tileId, callback);
 		}, function(err) {
-			longitude += longitudePerTile;
-			if (longitude > fetchBbox.east) {
-				latitude -= latitudePerTile;
-				longitude = fetchBbox.west;
+
+			var tile = Tile.decodeTileId(currentTileId);
+
+			currentTileId = Tile.tileIdFromRowColumn(tile.row, tile.column+1, 18);
+
+			var tile = Tile.tileFromTileId(currentTileId);
+			console.log('fetching tile at ' + tile.latitudeNorth + ',' + tile.longitudeWest, ': ' + currentTileId);
+
+			if (tile.longitudeWest > fetchBbox.east) {
+
+				tile.row++;
+				tile.column = topLeftTile.column;
+
+				currentTileId = Tile.tileIdFromRowColumn(tile.row, tile.column, 18);
+				tile = Tile.tileFromTileId(currentTileId);
 			}
 
-			if (latitude < fetchBbox.south) {
+			if (tile.latitudeNorth < fetchBbox.south) {
 				console.log('finished');
 				process.exit(0);
 			}
